@@ -1,0 +1,19 @@
+# Virtual environment
+venv/
+
+# Python cache files
+__pycache__/
+*.pyc
+
+# Database files
+*.db
+
+# VS Code settings
+.vscode/
+
+# Environment variables
+.env
+
+# Other potential files to ignore
+*.log
+*.bak
