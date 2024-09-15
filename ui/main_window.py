@@ -4,7 +4,7 @@ import numpy as np
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QLabel, QDialog, QFormLayout, QComboBox,
-    QTimeEdit, QDateEdit, QMessageBox, QInputDialog
+    QTimeEdit, QDateEdit, QMessageBox, QInputDialog, QSpinBox
 )
 from PyQt5.QtCore import Qt, QDate, QTime
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
@@ -13,7 +13,7 @@ from matplotlib.scale import ScaleBase
 from matplotlib.transforms import Transform
 from matplotlib.ticker import FixedLocator, FixedFormatter
 from matplotlib import scale as mscale
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from database import Database
 
 class CustomTimeTransform(Transform):
@@ -150,6 +150,26 @@ class MainWindow(QMainWindow):
         self.add_entry_btn.clicked.connect(self.open_add_entry_dialog)
         self.set_start_date_btn.clicked.connect(self.set_start_date)
 
+        # Week navigation
+        self.week_layout = QHBoxLayout()
+        self.prev_week_btn = QPushButton("Previous Week")
+        self.next_week_btn = QPushButton("Next Week")
+        self.week_spinbox = QSpinBox()
+        self.week_spinbox.setRange(1, 53)
+        self.week_spinbox.setValue(date.today().isocalendar()[1])
+        self.week_label = QLabel(f"Week {self.week_spinbox.value()}")
+        
+        self.week_layout.addWidget(self.prev_week_btn)
+        self.week_layout.addWidget(self.week_label)
+        self.week_layout.addWidget(self.week_spinbox)
+        self.week_layout.addWidget(self.next_week_btn)
+        
+        self.main_layout.insertLayout(1, self.week_layout)  # Insert after top buttons
+
+        self.prev_week_btn.clicked.connect(self.previous_week)
+        self.next_week_btn.clicked.connect(self.next_week)
+        self.week_spinbox.valueChanged.connect(self.week_changed)
+
         # Matplotlib Figure
         self.figure, self.ax = plt.subplots(figsize=(10, 8))
         self.canvas = FigureCanvas(self.figure)
@@ -200,19 +220,43 @@ class MainWindow(QMainWindow):
             except ValueError:
                 QMessageBox.warning(self, "Invalid Date", "Please enter a valid date in YYYY-MM-DD format.")
 
+    def previous_week(self):
+        self.week_spinbox.setValue(self.week_spinbox.value() - 1)
+
+    def next_week(self):
+        self.week_spinbox.setValue(self.week_spinbox.value() + 1)
+
+    def week_changed(self, value):
+        self.week_label.setText(f"Week {value}")
+        self.update_displayed_week(value)
+
+    def update_displayed_week(self, week_number):
+        year = date.today().year
+        start_date = date.fromisocalendar(year, week_number, 1)
+        self.db.set_setting("start_date", start_date.strftime("%Y-%m-%d"))
+        self.load_data()
+
     def load_data(self):
         start_date = self.db.get_setting("start_date")
         if not start_date:
-            # Default to the first day of the current week
-            today = datetime.today()
-            start_date = (today - timedelta(days=today.weekday())).strftime("%Y-%m-%d")
-        end_date = (datetime.strptime(start_date, "%Y-%m-%d") + timedelta(days=6)).strftime("%Y-%m-%d")
+            today = date.today()
+            start_date = today - timedelta(days=today.weekday())
+        else:
+            if isinstance(start_date, str):
+                start_date = datetime.strptime(start_date, "%Y-%m-%d").date()
+
+        end_date = start_date + timedelta(days=6)
+        
+        # Update week number display
+        self.week_spinbox.setValue(start_date.isocalendar()[1])
+        self.week_label.setText(f"Week {self.week_spinbox.value()}")       
+        
         entries = self.db.get_entries(start_date, end_date)
 
         # Process data
         data = {}
         for entry in entries:
-            date = entry[1]
+            date2 = entry[1]
             entry_type = entry[4]
             hours = entry[5]
             if entry_type == "Working":
@@ -221,18 +265,14 @@ class MainWindow(QMainWindow):
                     check_out = datetime.strptime(entry[3], "%H:%M")
                     start_time = check_in.hour + check_in.minute / 60
                     end_time = check_out.hour + check_out.minute / 60
-                    data[date] = data.get(date, []) + [(start_time, end_time)]
+                    data[date2] = data.get(date2, []) + [(start_time, end_time)]
                 else:
-                    data[date] = data.get(date, []) + [(9.0, 16.5)]  # Assume standard hours
+                    data[date2] = data.get(date2, []) + [(9.0, 16.5)]  # Assume standard hours
             else:
-                data[date] = data.get(date, []) + [(9.0, 16.5)]  # Assume standard hours
+                data[date2] = data.get(date2, []) + [(9.0, 16.5)]  # Assume standard hours
 
         # Ensure all days are present
-        start_dt = datetime.strptime(start_date, "%Y-%m-%d")
-        dates = []
-        for i in range(7):
-            day = (start_dt + timedelta(days=i)).strftime("%Y-%m-%d")
-            dates.append(day)
+        dates = [(start_date + timedelta(days=i)).strftime("%Y-%m-%d") for i in range(7)]
         
         # Reorder dates to make Sunday the last day
         if datetime.strptime(dates[0], "%Y-%m-%d").weekday() == 6:  # If the first day is Sunday
