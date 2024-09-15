@@ -366,9 +366,9 @@ class MainWindow(QMainWindow):
                 check_out = datetime.strptime(entry[3], "%H:%M")
                 start_time = check_in.hour + check_in.minute / 60
                 end_time = check_out.hour + check_out.minute / 60
-                data[date2] = data.get(date2, []) + [(start_time, end_time)]
+                data[date2] = data.get(date2, []) + [(start_time, end_time, entry_type)]
             else:
-                data[date2] = data.get(date2, []) + [(8.0, 16.0)]  # Assume standard hours
+                data[date2] = data.get(date2, []) + [(8.0, 16.0, entry_type)]  # Assume standard hours
 
         # Ensure all days are present
         dates = [(start_date + timedelta(days=i)).strftime("%Y-%m-%d") for i in range(7)]
@@ -399,13 +399,14 @@ class MainWindow(QMainWindow):
             if day in data:
                 periods = data[day]
                 for period in periods:
-                    start, end = period
+                    start, end, entry_type = period
+                    color = 'skyblue' if entry_type == 'Working' else 'green' if entry_type == 'Vacation' else 'yellow'
                     self.ax.bar(
                         i,
                         end - start,
                         bottom=start,
                         width=0.6,
-                        color='skyblue',
+                        color=color,
                         edgecolor='black'
                     )
         
