@@ -28,6 +28,8 @@ class Database:
         self.conn.commit()
 
     def add_entry(self, date, check_in, check_out, entry_type, hours):
+        if entry_type == "Working":
+            self.resolve_overlaps(date, check_in, check_out)
         cursor = self.conn.cursor()
         cursor.execute('''
             INSERT INTO work_entries (date, check_in, check_out, type, hours)
@@ -62,6 +64,8 @@ class Database:
         self.conn.close()
 
     def update_entry(self, old_date, old_check_in, old_check_out, new_date, new_check_in, new_check_out, new_hours):
+        if new_check_in and new_check_out:
+            self.resolve_overlaps(new_date, new_check_in, new_check_out, exclude=(old_date, old_check_in, old_check_out))
         cursor = self.conn.cursor()
         cursor.execute("""
             UPDATE work_entries
@@ -77,3 +81,44 @@ class Database:
             WHERE date = ? AND check_in = ? AND check_out = ?
         """, (date, check_in, check_out))
         self.conn.commit()
+
+    def resolve_overlaps(self, date, new_check_in, new_check_out, exclude=None):
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            SELECT date, check_in, check_out, hours FROM work_entries 
+            WHERE date = ? AND type = 'Working'
+            ORDER BY check_in
+        """, (date,))
+        entries = cursor.fetchall()
+
+        new_start = datetime.strptime(new_check_in, "%H:%M")
+        new_end = datetime.strptime(new_check_out, "%H:%M")
+
+        for entry_date, check_in, check_out, hours in entries:
+            if exclude and (entry_date, check_in, check_out) == exclude:
+                continue
+
+            start = datetime.strptime(check_in, "%H:%M")
+            end = datetime.strptime(check_out, "%H:%M")
+
+            if new_start < end and new_end > start:
+                if new_start <= start and new_end >= end:
+                    # Complete overlap, delete the existing entry
+                    self.delete_entry(entry_date, check_in, check_out)
+                elif new_start > start and new_end < end:
+                    # New entry is inside existing entry, split the existing entry
+                    self.update_entry(entry_date, check_in, check_out, 
+                                      entry_date, check_in, new_start.strftime("%H:%M"), 
+                                      (new_start - start).seconds / 3600)
+                    self.add_entry(entry_date, new_end.strftime("%H:%M"), check_out, "Working", 
+                                   (end - new_end).seconds / 3600)
+                elif new_start <= start:
+                    # Overlap at the start
+                    self.update_entry(entry_date, check_in, check_out,
+                                      entry_date, new_end.strftime("%H:%M"), check_out,
+                                      (end - new_end).seconds / 3600)
+                elif new_end >= end:
+                    # Overlap at the end
+                    self.update_entry(entry_date, check_in, check_out,
+                                      entry_date, check_in, new_start.strftime("%H:%M"),
+                                      (new_start - start).seconds / 3600)
