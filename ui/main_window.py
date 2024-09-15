@@ -20,39 +20,53 @@ class CustomTimeTransform(Transform):
     input_dims = output_dims = 1
     is_separable = True
 
+    def __init__(self):
+        super().__init__()
+        self.linearstart = 7
+        self.linearend = 18
+        self.ticksize1 = 0.2
+        self.ticksize2 = 0.6
+
     def transform_non_affine(self, t):
         t = np.asarray(t)
         y = np.empty_like(t)
         # Compress 00:00-07:00
-        mask = t < 7
-        y[mask] = t[mask] * 0.1
+        mask = t < self.linearstart
+        y[mask] = t[mask] * self.ticksize1
         # Normal scale for 07:00-18:00
-        mask = (t >= 7) & (t < 18)
-        y[mask] = 0.7 + (t[mask] - 7) * 0.6
+        mask = (t >= self.linearstart) & (t < self.linearend)
+        y[mask] = self.linearstart*self.ticksize1 + (t[mask] - self.linearstart) * self.ticksize2
         # Compress 18:00-24:00
-        mask = t >= 18
-        y[mask] = 7.3 + (t[mask] - 18) * 0.2
+        mask = t >= self.linearend
+        y[mask] = self.linearstart*self.ticksize1 + (self.linearend-self.linearstart)*self.ticksize2 + (t[mask] - self.linearend) * self.ticksize1
         return y
 
     def inverted(self):
-        return InvertedCustomTimeTransform()
+        return InvertedCustomTimeTransform(self.linearstart, self.linearend, self.ticksize1, self.ticksize2)
 
 class InvertedCustomTimeTransform(Transform):
     input_dims = output_dims = 1
     is_separable = True
 
+    def __init__(self, linearstart, linearend, ticksize1, ticksize2):
+        super().__init__()
+        self.linearstart = linearstart
+        self.linearend = linearend
+        self.ticksize1 = ticksize1
+        self.ticksize2 = ticksize2
+
     def transform_non_affine(self, y):
         y = np.asarray(y)
         t = np.empty_like(y)
         # Inverse for 00:00-07:00
-        mask = y < 0.7
-        t[mask] = y[mask] / 0.1
+        mask = y < self.linearstart * self.ticksize1
+        t[mask] = y[mask] / self.ticksize1
         # Inverse for 07:00-18:00
-        mask = (y >= 0.7) & (y < 7.3)
-        t[mask] = 7 + (y[mask] - 0.7) / 0.6
+        mask = (y >= self.linearstart * self.ticksize1) & (y < self.linearstart * self.ticksize1 + (self.linearend - self.linearstart) * self.ticksize2)
+        t[mask] = self.linearstart + (y[mask] - self.linearstart * self.ticksize1) / self.ticksize2
         # Inverse for 18:00-24:00
-        mask = y >= 7.3
-        t[mask] = 18 + (y[mask] - 7.3) / 0.2
+        mask = y >= self.linearstart * self.ticksize1 + (self.linearend - self.linearstart) * self.ticksize2
+        t[mask] = self.linearend + (y[mask] - (self.linearstart * self.ticksize1 + (self.linearend - self.linearstart) * self.ticksize2)) / self.ticksize1
         return t
 
     def inverted(self):
@@ -219,6 +233,10 @@ class MainWindow(QMainWindow):
         for i in range(7):
             day = (start_dt + timedelta(days=i)).strftime("%Y-%m-%d")
             dates.append(day)
+        
+        # Reorder dates to make Sunday the last day
+        if datetime.strptime(dates[0], "%Y-%m-%d").weekday() == 6:  # If the first day is Sunday
+            dates = dates[1:] + [dates[0]]
 
         # Calculate extra hours
         total_extra = 0
@@ -233,6 +251,7 @@ class MainWindow(QMainWindow):
         self.ax.clear()
         self.ax.set_yscale('custom_time')
         self.ax.set_ylim(24, 0)  # Reverse y-axis so 0 at top
+        self.ax.set_xlim(-0.5, len(dates) - 0.5)
 
         x_positions = np.arange(len(dates))
 
@@ -250,6 +269,10 @@ class MainWindow(QMainWindow):
                         color='skyblue',
                         edgecolor='black'
                     )
+        
+        # Add vertical lines to separate days
+        for i in range(1, len(dates)):
+            self.ax.axvline(x=i-0.5, color='gray', linestyle='--', alpha=0.5)
 
         self.ax.set_xticks(x_positions)
         self.ax.set_xticklabels([datetime.strptime(d, "%Y-%m-%d").strftime("%a") for d in dates])
