@@ -16,7 +16,8 @@ class Database:
                 check_in TEXT,
                 check_out TEXT,
                 type TEXT NOT NULL,
-                hours REAL NOT NULL
+                hours REAL NOT NULL,
+                lunch_break BOOLEAN NOT NULL DEFAULT 1
             )
         ''')
         cursor.execute('''
@@ -27,13 +28,13 @@ class Database:
         ''')
         self.conn.commit()
 
-    def add_entry(self, date, check_in, check_out, entry_type, hours):
+    def add_entry(self, date, check_in, check_out, entry_type, hours, lunch_break):
         self.resolve_overlaps(date, check_in, check_out)
         cursor = self.conn.cursor()
         cursor.execute('''
-            INSERT INTO work_entries (date, check_in, check_out, type, hours)
-            VALUES (?, ?, ?, ?, ?)
-        ''', (date, check_in, check_out, entry_type, hours))
+            INSERT INTO work_entries (date, check_in, check_out, type, hours, lunch_break)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ''', (date, check_in, check_out, entry_type, hours, lunch_break))
         self.conn.commit()
 
     def get_entries(self, start_date, end_date):

@@ -4,7 +4,7 @@ import numpy as np
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QLabel, QDialog, QFormLayout, QComboBox,
-    QTimeEdit, QDateEdit, QMessageBox, QInputDialog, QSpinBox
+    QTimeEdit, QDateEdit, QMessageBox, QInputDialog, QSpinBox, QCheckBox
 )
 from PyQt5.QtCore import Qt, QDate, QTime
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
@@ -121,6 +121,10 @@ class AddEntryDialog(QDialog):
         self.layout.addRow("Type:", self.type_combo)
         self.layout.addRow("Check In:", self.check_in)
         self.layout.addRow("Check Out:", self.check_out)
+
+        self.lunch_break_checkbox = QCheckBox("Lunch Break", self)
+        self.lunch_break_checkbox.setChecked(True)
+        self.layout.addRow(self.lunch_break_checkbox)
 
         self.buttons_layout = QHBoxLayout()
         self.submit_btn = QPushButton("Submit", self)
@@ -298,6 +302,7 @@ class MainWindow(QMainWindow):
             check_in = dialog.check_in.time().toString("HH:mm")
             check_out = dialog.check_out.time().toString("HH:mm")
             fmt = "%H:%M"
+            lunch_break = dialog.lunch_break_checkbox.isChecked()
             try:
                 t_in = datetime.strptime(check_in, fmt)
                 t_out = datetime.strptime(check_out, fmt)
@@ -308,8 +313,14 @@ class MainWindow(QMainWindow):
             except ValueError:
                 QMessageBox.warning(self, "Invalid Time", "Please enter valid check-in and check-out times.")
                 return
-
-            self.db.add_entry(date, check_in, check_out, entry_type, hours)
+            
+            # Automatically set lunch_break to True for working sessions over 5 hours
+            if entry_type == "Working" and hours > 5:
+                lunch_break = True
+            else:
+                lunch_break = False
+            
+            self.db.add_entry(date, check_in, check_out, entry_type, hours, lunch_break)
             self.load_data()
 
     def set_start_date(self):
@@ -361,14 +372,15 @@ class MainWindow(QMainWindow):
             date2 = entry[1]
             entry_type = entry[4]
             hours = entry[5]
+            lunch_break = entry[6]
             if entry[2] and entry[3]:
                 check_in = datetime.strptime(entry[2], "%H:%M")
                 check_out = datetime.strptime(entry[3], "%H:%M")
                 start_time = check_in.hour + check_in.minute / 60
                 end_time = check_out.hour + check_out.minute / 60
-                data[date2] = data.get(date2, []) + [(start_time, end_time, entry_type)]
+                data[date2] = data.get(date2, []) + [(start_time, end_time, entry_type, lunch_break)]
             else:
-                data[date2] = data.get(date2, []) + [(8.0, 16.0, entry_type)]  # Assume standard hours
+                data[date2] = data.get(date2, []) + [(8.0, 16.0, entry_type, lunch_break)]
 
         # Ensure all days are present
         dates = [(start_date + timedelta(days=i)).strftime("%Y-%m-%d") for i in range(7)]
@@ -399,7 +411,7 @@ class MainWindow(QMainWindow):
             if day in data:
                 periods = data[day]
                 for period in periods:
-                    start, end, entry_type = period
+                    start, end, entry_type, lunch_break = period
                     color = 'skyblue' if entry_type == 'Working' else 'green' if entry_type == 'Vacation' else 'yellow'
                     self.ax.bar(
                         i,
@@ -409,6 +421,10 @@ class MainWindow(QMainWindow):
                         color=color,
                         edgecolor='black'
                     )
+                    # Add white dot for lunch break
+                    if lunch_break:
+                        mid_time = (start + end) / 2
+                        self.ax.scatter(i, mid_time, color='white', s=70, zorder=3, edgecolors='black')
         
         # Add vertical lines to separate days
         for i in range(1, len(dates)):
