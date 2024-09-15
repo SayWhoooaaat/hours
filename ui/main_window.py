@@ -8,6 +8,7 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtCore import Qt, QDate, QTime
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
 import matplotlib.pyplot as plt
 from matplotlib.scale import ScaleBase
 from matplotlib.transforms import Transform
@@ -91,7 +92,7 @@ class CustomTimeScale(ScaleBase):
 mscale.register_scale(CustomTimeScale)
 
 class AddEntryDialog(QDialog):
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, preset_date=None):
         super(AddEntryDialog, self).__init__(parent)
         self.setWindowTitle("Add Work Entry")
         self.setGeometry(100, 100, 300, 200)
@@ -100,6 +101,12 @@ class AddEntryDialog(QDialog):
         self.date_edit = QDateEdit(self)
         self.date_edit.setCalendarPopup(True)
         self.date_edit.setDate(QDate.currentDate())
+
+        if preset_date:
+            self.date_edit.setDate(QDate(preset_date.year, preset_date.month, preset_date.day))
+        else:
+            self.date_edit.setDate(QDate.currentDate())
+
 
         self.type_combo = QComboBox(self)
         self.type_combo.addItems(["Working", "Sick Leave", "Vacation"])
@@ -173,7 +180,12 @@ class MainWindow(QMainWindow):
         # Matplotlib Figure
         self.figure, self.ax = plt.subplots(figsize=(10, 8))
         self.canvas = FigureCanvas(self.figure)
+        #self.toolbar = NavigationToolbar(self.canvas, self)
+        #self.main_layout.addWidget(self.toolbar)
         self.main_layout.addWidget(self.canvas)
+
+        # Connect the click event
+        self.canvas.mpl_connect('button_press_event', self.on_plot_click)
 
         # Extra Hours Display
         self.extra_hours_label = QLabel("Extra Hours: 0")
@@ -183,8 +195,18 @@ class MainWindow(QMainWindow):
 
         self.load_data()
 
-    def open_add_entry_dialog(self):
+    def on_plot_click(self, event):
+        if event.inaxes == self.ax:
+            day_index = int(event.xdata + 0.5)  # Round to nearest integer
+            if 0 <= day_index < 7:
+                start_date = datetime.strptime(self.db.get_setting("start_date"), "%Y-%m-%d").date()
+                clicked_date = start_date + timedelta(days=day_index)
+                self.open_add_entry_dialog(clicked_date)
+
+    def open_add_entry_dialog(self, preset_date=None):
         dialog = AddEntryDialog(self)
+        if preset_date:
+            dialog.date_edit.setDate(QDate(preset_date.year, preset_date.month, preset_date.day))
         if dialog.exec_() == QDialog.Accepted:
             date = dialog.date_edit.date().toString("yyyy-MM-dd")
             entry_type = dialog.type_combo.currentText()
@@ -315,11 +337,16 @@ class MainWindow(QMainWindow):
             self.ax.axvline(x=i-0.5, color='gray', linestyle='--', alpha=0.5)
 
         self.ax.set_xticks(x_positions)
-        self.ax.set_xticklabels([datetime.strptime(d, "%Y-%m-%d").strftime("%a") for d in dates])
+        self.ax.set_xticklabels([
+            f"{datetime.strptime(d, '%Y-%m-%d').strftime('%A')}\n{datetime.strptime(d, '%Y-%m-%d').strftime('%d.%m.%Y')}"
+            for d in dates
+        ])
+        # Bottom margin:
+        self.figure.subplots_adjust(bottom=0.2)
 
-        self.ax.set_xlabel("Day of Week")
-        self.ax.set_ylabel("Time of Day")
-        self.ax.set_title("Weekly Work Schedule")
+        #self.ax.set_xlabel("Day of Week")
+        #self.ax.set_ylabel("Time of Day")
+        #self.ax.set_title("Weekly Work Schedule")
 
         self.figure.tight_layout()
         self.canvas.draw()
