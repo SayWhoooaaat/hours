@@ -234,7 +234,15 @@ class MainWindow(QMainWindow):
         self.extra_hours_label.setStyleSheet("font-size: 16px;")
         self.main_layout.addWidget(self.extra_hours_label)
 
+        self.set_current_week()
         self.load_data()
+
+    def set_current_week(self):
+        today = date.today()
+        current_week = today.isocalendar()[1]
+        self.week_spinbox.setValue(current_week)
+        start_of_week = today - timedelta(days=today.weekday())
+        self.db.set_setting("start_date", start_of_week.strftime("%Y-%m-%d"))
 
     def on_plot_click(self, event):
         if event.inaxes == self.ax:
