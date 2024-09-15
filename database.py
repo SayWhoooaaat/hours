@@ -45,6 +45,14 @@ class Database:
         ''', (start_date, end_date))
         return cursor.fetchall()
 
+    def get_entry(self, date, check_in):
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            SELECT * FROM work_entries
+            WHERE date = ? AND check_in = ?
+        """, (date, check_in))
+        return cursor.fetchone()
+
     def set_setting(self, key, value):
         cursor = self.conn.cursor()
         cursor.execute('''
@@ -63,15 +71,15 @@ class Database:
     def close(self):
         self.conn.close()
 
-    def update_entry(self, old_date, old_check_in, old_check_out, new_date, new_check_in, new_check_out, new_hours):
+    def update_entry(self, old_date, old_check_in, old_check_out, new_date, new_check_in, new_check_out, new_type, new_hours, new_lunch_break):
         if new_check_in and new_check_out:
             self.resolve_overlaps(new_date, new_check_in, new_check_out, exclude=(old_date, old_check_in, old_check_out))
         cursor = self.conn.cursor()
         cursor.execute("""
             UPDATE work_entries
-            SET date = ?, check_in = ?, check_out = ?, hours = ?
+            SET date = ?, check_in = ?, check_out = ?, type = ?, hours = ?, lunch_break = ?
             WHERE date = ? AND check_in = ? AND check_out = ?
-        """, (new_date, new_check_in, new_check_out, new_hours, old_date, old_check_in, old_check_out))
+        """, (new_date, new_check_in, new_check_out, new_type, new_hours, new_lunch_break, old_date, old_check_in, old_check_out))
         self.conn.commit()
 
     def delete_entry(self, date, check_in, check_out):
@@ -86,7 +94,7 @@ class Database:
     def resolve_overlaps(self, date, new_check_in, new_check_out, exclude=None):
         cursor = self.conn.cursor()
         cursor.execute("""
-            SELECT date, check_in, check_out, hours, type FROM work_entries 
+            SELECT date, check_in, check_out, hours, type, lunch_break FROM work_entries 
             WHERE date = ?
             ORDER BY check_in
         """, (date,))
@@ -95,7 +103,7 @@ class Database:
         new_start = datetime.strptime(new_check_in, "%H:%M")
         new_end = datetime.strptime(new_check_out, "%H:%M")
 
-        for entry_date, check_in, check_out, hours, entry_type in entries:
+        for entry_date, check_in, check_out, hours, entry_type, lunch_break in entries:
             if exclude and (entry_date, check_in, check_out) == exclude:
                 continue
 
@@ -110,16 +118,18 @@ class Database:
                     # New entry is inside existing entry, split the existing entry
                     self.update_entry(entry_date, check_in, check_out, 
                                     entry_date, check_in, new_start.strftime("%H:%M"), 
-                                    (new_start - start).seconds / 3600)
+                                    entry_type, (new_start - start).seconds / 3600, lunch_break)
                     self.add_entry(entry_date, new_end.strftime("%H:%M"), check_out, entry_type, 
-                                (end - new_end).seconds / 3600)
+                                (end - new_end).seconds / 3600, lunch_break)
                 elif new_start <= start:
                     # Overlap at the start
                     self.update_entry(entry_date, check_in, check_out,
                                     entry_date, new_end.strftime("%H:%M"), check_out,
-                                    (end - new_end).seconds / 3600)
+                                    entry_type, (end - new_end).seconds / 3600, lunch_break)
                 elif new_end >= end:
                     # Overlap at the end
                     self.update_entry(entry_date, check_in, check_out,
                                     entry_date, check_in, new_start.strftime("%H:%M"),
-                                    (new_start - start).seconds / 3600)
+                                    entry_type, (new_start - start).seconds / 3600, lunch_break)
+                    
+

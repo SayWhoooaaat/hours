@@ -135,7 +135,7 @@ class AddEntryDialog(QDialog):
     def submit(self):
         self.accept()
 class EditEntryDialog(QDialog):
-    def __init__(self, parent=None, date=None, start_time=None, end_time=None):
+    def __init__(self, parent=None, date=None, start_time=None, end_time=None, entry_type=None, lunch_break=False):
         super(EditEntryDialog, self).__init__(parent)
         self.setWindowTitle("Edit Work Entry")
         self.setGeometry(100, 100, 300, 200)
@@ -150,9 +150,19 @@ class EditEntryDialog(QDialog):
         self.check_out = QTimeEdit(self)
         self.check_out.setTime(QTime(int(end_time), int((end_time % 1) * 60)))
 
+        self.type_combo = QComboBox(self)
+        self.type_combo.addItems(["Working", "Sick Leave", "Vacation"])
+        self.type_combo.setCurrentText(entry_type)
+
+        self.lunch_break_label = QLabel("Lunch Break:")
+        self.lunch_break_checkbox = QCheckBox(self)
+        self.lunch_break_checkbox.setChecked(lunch_break)
+
         self.layout.addRow("Date:", self.date_edit)
+        self.layout.addRow("Type:", self.type_combo)
         self.layout.addRow("Check In:", self.check_in)
         self.layout.addRow("Check Out:", self.check_out)
+        self.layout.addRow(self.lunch_break_label, self.lunch_break_checkbox)
 
         self.buttons_layout = QHBoxLayout()
         self.update_btn = QPushButton("Update", self)
@@ -166,8 +176,21 @@ class EditEntryDialog(QDialog):
         self.update_btn.clicked.connect(self.update)
         self.delete_btn.clicked.connect(self.delete)
         self.cancel_btn.clicked.connect(self.reject)
+        self.type_combo.currentTextChanged.connect(self.update_lunch_break_visibility)
 
         self.delete_entry = False
+
+        # Initial visibility update
+        self.update_lunch_break_visibility(entry_type)
+
+    def update_lunch_break_visibility(self, entry_type):
+        if entry_type == "Working":
+            self.lunch_break_label.setText("Lunch Break:")
+            self.lunch_break_label.setVisible(True)
+            self.lunch_break_checkbox.setVisible(True)
+        else:
+            self.lunch_break_label.setVisible(False)
+            self.lunch_break_checkbox.setVisible(False)
 
     def update(self):
         self.accept()
@@ -265,7 +288,14 @@ class MainWindow(QMainWindow):
                 self.open_add_entry_dialog(clicked_date)
 
     def open_edit_entry_dialog(self, date, start_time, end_time):
-        dialog = EditEntryDialog(self, date, start_time, end_time)
+        entry = self.db.get_entry(date.strftime("%Y-%m-%d"), f"{int(start_time):02d}:{int((start_time % 1) * 60):02d}")
+        if entry:
+            entry_type = entry[4]
+            lunch_break = entry[6]
+        else:
+            entry_type = "Working"
+            lunch_break = False
+        dialog = EditEntryDialog(self, date, start_time, end_time, entry_type, lunch_break)
         if dialog.exec_() == QDialog.Accepted:
             if dialog.delete_entry:
                 print("main_window says delete")
@@ -280,11 +310,13 @@ class MainWindow(QMainWindow):
                 new_check_out = dialog.check_out.time().toString("HH:mm")
                 new_hours = (dialog.check_out.time().hour() - dialog.check_in.time().hour()) + \
                             (dialog.check_out.time().minute() - dialog.check_in.time().minute()) / 60
+                new_type = dialog.type_combo.currentText()
+                new_lunch_break = dialog.lunch_break_checkbox.isChecked() if new_type == "Working" else False
                 self.db.update_entry(
                     date.strftime("%Y-%m-%d"),
                     f"{int(start_time):02d}:{int((start_time % 1) * 60):02d}",
                     f"{int(end_time):02d}:{int((end_time % 1) * 60):02d}",
-                    new_date, new_check_in, new_check_out, new_hours
+                    new_date, new_check_in, new_check_out, new_type, new_hours, new_lunch_break
                 )
             self.load_data()
 
