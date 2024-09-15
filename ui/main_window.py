@@ -260,6 +260,7 @@ class MainWindow(QMainWindow):
         dialog = EditEntryDialog(self, date, start_time, end_time)
         if dialog.exec_() == QDialog.Accepted:
             if dialog.delete_entry:
+                print("main_window says delete")
                 self.db.delete_entry(
                     date.strftime("%Y-%m-%d"),
                     f"{int(start_time):02d}:{int((start_time % 1) * 60):02d}",
@@ -286,24 +287,19 @@ class MainWindow(QMainWindow):
         if dialog.exec_() == QDialog.Accepted:
             date = dialog.date_edit.date().toString("yyyy-MM-dd")
             entry_type = dialog.type_combo.currentText()
-            if entry_type == "Working":
-                check_in = dialog.check_in.time().toString("HH:mm")
-                check_out = dialog.check_out.time().toString("HH:mm")
-                fmt = "%H:%M"
-                try:
-                    t_in = datetime.strptime(check_in, fmt)
-                    t_out = datetime.strptime(check_out, fmt)
-                    if t_out <= t_in:
-                        QMessageBox.warning(self, "Invalid Time", "Check-out time must be after check-in time.")
-                        return
-                    hours = (t_out - t_in).seconds / 3600
-                except ValueError:
-                    QMessageBox.warning(self, "Invalid Time", "Please enter valid check-in and check-out times.")
+            check_in = dialog.check_in.time().toString("HH:mm")
+            check_out = dialog.check_out.time().toString("HH:mm")
+            fmt = "%H:%M"
+            try:
+                t_in = datetime.strptime(check_in, fmt)
+                t_out = datetime.strptime(check_out, fmt)
+                if t_out <= t_in:
+                    QMessageBox.warning(self, "Invalid Time", "Check-out time must be after check-in time.")
                     return
-            else:
-                check_in = None
-                check_out = None
-                hours = 7.5  # Auto-fill normal hours
+                hours = (t_out - t_in).seconds / 3600
+            except ValueError:
+                QMessageBox.warning(self, "Invalid Time", "Please enter valid check-in and check-out times.")
+                return
 
             self.db.add_entry(date, check_in, check_out, entry_type, hours)
             self.load_data()
@@ -357,17 +353,14 @@ class MainWindow(QMainWindow):
             date2 = entry[1]
             entry_type = entry[4]
             hours = entry[5]
-            if entry_type == "Working":
-                if entry[2] and entry[3]:
-                    check_in = datetime.strptime(entry[2], "%H:%M")
-                    check_out = datetime.strptime(entry[3], "%H:%M")
-                    start_time = check_in.hour + check_in.minute / 60
-                    end_time = check_out.hour + check_out.minute / 60
-                    data[date2] = data.get(date2, []) + [(start_time, end_time)]
-                else:
-                    data[date2] = data.get(date2, []) + [(9.0, 16.5)]  # Assume standard hours
+            if entry[2] and entry[3]:
+                check_in = datetime.strptime(entry[2], "%H:%M")
+                check_out = datetime.strptime(entry[3], "%H:%M")
+                start_time = check_in.hour + check_in.minute / 60
+                end_time = check_out.hour + check_out.minute / 60
+                data[date2] = data.get(date2, []) + [(start_time, end_time)]
             else:
-                data[date2] = data.get(date2, []) + [(9.0, 16.5)]  # Assume standard hours
+                data[date2] = data.get(date2, []) + [(8.0, 16.0)]  # Assume standard hours
 
         # Ensure all days are present
         dates = [(start_date + timedelta(days=i)).strftime("%Y-%m-%d") for i in range(7)]
