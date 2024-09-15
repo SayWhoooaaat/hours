@@ -60,3 +60,20 @@ class Database:
 
     def close(self):
         self.conn.close()
+
+    def update_entry(self, old_date, old_check_in, old_check_out, new_date, new_check_in, new_check_out, new_hours):
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            UPDATE work_entries
+            SET date = ?, check_in = ?, check_out = ?, hours = ?
+            WHERE date = ? AND check_in = ? AND check_out = ?
+        """, (new_date, new_check_in, new_check_out, new_hours, old_date, old_check_in, old_check_out))
+        self.conn.commit()
+
+    def delete_entry(self, date, check_in, check_out):
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            DELETE FROM work_entries
+            WHERE date = ? AND check_in = ? AND check_out = ?
+        """, (date, check_in, check_out))
+        self.conn.commit()

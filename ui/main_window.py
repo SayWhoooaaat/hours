@@ -13,6 +13,7 @@ import matplotlib.pyplot as plt
 from matplotlib.scale import ScaleBase
 from matplotlib.transforms import Transform
 from matplotlib.ticker import FixedLocator, FixedFormatter
+from matplotlib.patches import Rectangle
 from matplotlib import scale as mscale
 from datetime import date, datetime, timedelta
 from database import Database
@@ -133,7 +134,47 @@ class AddEntryDialog(QDialog):
 
     def submit(self):
         self.accept()
+class EditEntryDialog(QDialog):
+    def __init__(self, parent=None, date=None, start_time=None, end_time=None):
+        super(EditEntryDialog, self).__init__(parent)
+        self.setWindowTitle("Edit Work Entry")
+        self.setGeometry(100, 100, 300, 200)
+        self.layout = QFormLayout(self)
 
+        self.date_edit = QDateEdit(self)
+        self.date_edit.setCalendarPopup(True)
+        self.date_edit.setDate(QDate(date.year, date.month, date.day))
+
+        self.check_in = QTimeEdit(self)
+        self.check_in.setTime(QTime(int(start_time), int((start_time % 1) * 60)))
+        self.check_out = QTimeEdit(self)
+        self.check_out.setTime(QTime(int(end_time), int((end_time % 1) * 60)))
+
+        self.layout.addRow("Date:", self.date_edit)
+        self.layout.addRow("Check In:", self.check_in)
+        self.layout.addRow("Check Out:", self.check_out)
+
+        self.buttons_layout = QHBoxLayout()
+        self.update_btn = QPushButton("Update", self)
+        self.delete_btn = QPushButton("Delete", self)
+        self.cancel_btn = QPushButton("Cancel", self)
+        self.buttons_layout.addWidget(self.update_btn)
+        self.buttons_layout.addWidget(self.delete_btn)
+        self.buttons_layout.addWidget(self.cancel_btn)
+        self.layout.addRow(self.buttons_layout)
+
+        self.update_btn.clicked.connect(self.update)
+        self.delete_btn.clicked.connect(self.delete)
+        self.cancel_btn.clicked.connect(self.reject)
+
+        self.delete_entry = False
+
+    def update(self):
+        self.accept()
+
+    def delete(self):
+        self.delete_entry = True
+        self.accept()
 class MainWindow(QMainWindow):
     def __init__(self):
         super(MainWindow, self).__init__()
@@ -201,7 +242,42 @@ class MainWindow(QMainWindow):
             if 0 <= day_index < 7:
                 start_date = datetime.strptime(self.db.get_setting("start_date"), "%Y-%m-%d").date()
                 clicked_date = start_date + timedelta(days=day_index)
+                
+                # Check if we clicked on an existing bar
+                for artist in self.ax.get_children():
+                    if isinstance(artist, Rectangle) and artist.get_x() == day_index - 0.3:  # -0.3 because bar width is 0.6
+                        if artist.contains(event)[0]:
+                            # We clicked on an existing bar
+                            start_time = artist.get_y()
+                            end_time = start_time + artist.get_height()
+                            self.open_edit_entry_dialog(clicked_date, start_time, end_time)
+                            return
+
+                # If we didn't click on a bar, open the add entry dialog
                 self.open_add_entry_dialog(clicked_date)
+
+    def open_edit_entry_dialog(self, date, start_time, end_time):
+        dialog = EditEntryDialog(self, date, start_time, end_time)
+        if dialog.exec_() == QDialog.Accepted:
+            if dialog.delete_entry:
+                self.db.delete_entry(
+                    date.strftime("%Y-%m-%d"),
+                    f"{int(start_time):02d}:{int((start_time % 1) * 60):02d}",
+                    f"{int(end_time):02d}:{int((end_time % 1) * 60):02d}"
+                )
+            else:
+                new_date = dialog.date_edit.date().toString("yyyy-MM-dd")
+                new_check_in = dialog.check_in.time().toString("HH:mm")
+                new_check_out = dialog.check_out.time().toString("HH:mm")
+                new_hours = (dialog.check_out.time().hour() - dialog.check_in.time().hour()) + \
+                            (dialog.check_out.time().minute() - dialog.check_in.time().minute()) / 60
+                self.db.update_entry(
+                    date.strftime("%Y-%m-%d"),
+                    f"{int(start_time):02d}:{int((start_time % 1) * 60):02d}",
+                    f"{int(end_time):02d}:{int((end_time % 1) * 60):02d}",
+                    new_date, new_check_in, new_check_out, new_hours
+                )
+            self.load_data()
 
     def open_add_entry_dialog(self, preset_date=None):
         dialog = AddEntryDialog(self)
