@@ -122,10 +122,6 @@ class AddEntryDialog(QDialog):
         self.layout.addRow("Check In:", self.check_in)
         self.layout.addRow("Check Out:", self.check_out)
 
-        self.lunch_break_checkbox = QCheckBox("Lunch Break", self)
-        self.lunch_break_checkbox.setChecked(True)
-        self.layout.addRow(self.lunch_break_checkbox)
-
         self.buttons_layout = QHBoxLayout()
         self.submit_btn = QPushButton("Submit", self)
         self.cancel_btn = QPushButton("Cancel", self)
@@ -302,7 +298,6 @@ class MainWindow(QMainWindow):
             check_in = dialog.check_in.time().toString("HH:mm")
             check_out = dialog.check_out.time().toString("HH:mm")
             fmt = "%H:%M"
-            lunch_break = dialog.lunch_break_checkbox.isChecked()
             try:
                 t_in = datetime.strptime(check_in, fmt)
                 t_out = datetime.strptime(check_out, fmt)
